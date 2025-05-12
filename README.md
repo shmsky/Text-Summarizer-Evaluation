@@ -136,32 +136,6 @@ The tool generates detailed logs in `evaluation.log`. Check this file for:
 - Warning messages
 - Summary statistics
 
-## Development
-
-### Running Tests
-
-To run the test suite:
-```bash
-python -m unittest test_evaluator.py
-```
-
-### Adding New Features
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Update documentation
-6. Submit a pull request
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 
