@@ -12,15 +12,29 @@ This tool evaluates the performance of a text extraction library by comparing ex
 - Configurable thresholds and parameters
 - Progress tracking
 - Summary statistics
+- Fallback text extraction methods
+- URL validation and error handling
 
 ## Installation
 
-1. Clone the repository
-2. Install dependencies:
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd <repository-name>
+```
+
+2. Create and activate virtual environment:
+```bash
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+```
+
+3. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
-3. Download spaCy model:
+
+4. Download spaCy model:
 ```bash
 python -m spacy download en_core_web_sm
 ```
@@ -33,8 +47,8 @@ The tool uses a YAML configuration file (`config.yaml`) with the following struc
 input:
   file: "Test_check.xlsx"
   required_columns:
-    - extracted_text
-    - reference_text
+    - URL
+    - lib_text
 
 output:
   file: "evaluation_results.xlsx"
@@ -59,8 +73,8 @@ logging:
 ## Usage
 
 1. Prepare your input Excel file with the required columns:
-   - `extracted_text`: Text extracted by the library
-   - `reference_text`: Reference/ground truth text
+   - `URL`: URL of the article
+   - `lib_text`: Text extracted by the library
 
 2. Run the evaluation:
 ```bash
@@ -75,21 +89,70 @@ python evaluate_text_extraction.py
 
 The tool generates a detailed report with the following information for each article:
 - Article ID
-- Reference text
-- Extracted text
+- URL
+- Reference text (extracted from URL)
+- Extracted text (from library)
 - Completeness percentage
 - Missing content
 - Missing key phrases
 - Significance assessment
 - Severity level
-- Missing key phrases count
+- Detailed analysis
+- Recommendations for improvement
 
-## Running Tests
+## Troubleshooting
+
+### Common Issues
+
+1. **spaCy model not found**
+   ```
+   Error: spaCy model not found
+   Solution: Run `python -m spacy download en_core_web_sm`
+   ```
+
+2. **URL access issues**
+   ```
+   Error: Network error while accessing URL
+   Solution: Check URL accessibility and network connection
+   ```
+
+3. **Invalid URL format**
+   ```
+   Error: Invalid URL format
+   Solution: Ensure URLs in input file are properly formatted
+   ```
+
+4. **Missing columns in input file**
+   ```
+   Error: Missing required columns
+   Solution: Check input file structure matches configuration
+   ```
+
+### Logging
+
+The tool generates detailed logs in `evaluation.log`. Check this file for:
+- Processing status
+- Error messages
+- Warning messages
+- Summary statistics
+
+## Development
+
+### Running Tests
 
 To run the test suite:
 ```bash
 python -m unittest test_evaluator.py
 ```
+
+### Adding New Features
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Update documentation
+6. Submit a pull request
 
 ## Contributing
 
@@ -101,4 +164,4 @@ python -m unittest test_evaluator.py
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 

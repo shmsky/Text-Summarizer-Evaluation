@@ -16,6 +16,10 @@ from bs4 import BeautifulSoup
 from newspaper import Article
 import time
 from urllib.parse import urlparse
+import socket
+from requests.exceptions import RequestException
+
+print("Starting evaluation...")
 
 @dataclass
 class AnalysisConfig:
@@ -37,11 +41,16 @@ class TextExtractionEvaluator:
     def __init__(self, config_path: str = "config.yaml"):
         self.config = self._load_config(config_path)
         self._setup_logging()
-        self.nlp = spacy.load("en_core_web_sm")
+        try:
+            self.nlp = spacy.load("en_core_web_sm")
+        except OSError:
+            self.logger.error("spaCy model not found. Please run: python -m spacy download en_core_web_sm")
+            raise
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         })
+        self.session.timeout = 30  # Set timeout to 30 seconds
         
     def _load_config(self, config_path: str) -> Dict:
         """Load configuration from YAML file."""
@@ -53,23 +62,63 @@ class TextExtractionEvaluator:
 
     def _setup_logging(self):
         """Setup logging configuration."""
+        log_file = self.config['logging']['file']
+        log_dir = Path(log_file).parent
+        if log_dir and not log_dir.exists():
+            log_dir.mkdir(parents=True)
+            
         logging.basicConfig(
             level=self.config['logging']['level'],
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler(self.config['logging']['file']),
+                logging.FileHandler(log_file),
                 logging.StreamHandler()
             ]
         )
         self.logger = logging.getLogger(__name__)
 
-    def extract_text_from_url(self, url: str) -> Optional[str]:
-        """Extract text content from URL using newspaper3k."""
+    def is_valid_url(self, url: str) -> bool:
+        """Validate URL format and accessibility."""
         try:
+            result = urlparse(url)
+            return all([result.scheme, result.netloc])
+        except Exception:
+            return False
+
+    def extract_text_from_url(self, url: str) -> Optional[str]:
+        """Extract text content from URL using newspaper3k with improved error handling."""
+        if not self.is_valid_url(url):
+            self.logger.error(f"Invalid URL format: {url}")
+            return None
+
+        try:
+            # First try with newspaper3k
             article = Article(url)
             article.download()
             article.parse()
-            return article.text
+            if article.text:
+                return article.text
+
+            # Fallback to BeautifulSoup if newspaper3k fails
+            response = self.session.get(url, timeout=30)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Remove unwanted elements
+            for element in soup(['script', 'style', 'nav', 'footer', 'header']):
+                element.decompose()
+            
+            # Get text from main content
+            main_content = soup.find('main') or soup.find('article') or soup.find('div', class_=['content', 'article', 'post'])
+            if main_content:
+                return main_content.get_text(separator=' ', strip=True)
+            
+            # Fallback to body text if no main content found
+            return soup.body.get_text(separator=' ', strip=True)
+
+        except RequestException as e:
+            self.logger.error(f"Network error while accessing {url}: {e}")
+            return None
         except Exception as e:
             self.logger.error(f"Error extracting text from {url}: {e}")
             return None
@@ -83,6 +132,8 @@ class TextExtractionEvaluator:
         text = re.sub(r'\s+', ' ', text)
         # Remove special characters but keep punctuation
         text = re.sub(r'[^\w\s.,!?-]', '', text)
+        # Remove multiple punctuation marks
+        text = re.sub(r'([.,!?])\1+', r'\1', text)
         return text.strip()
 
     def calculate_similarity(self, text1: str, text2: str) -> float:
@@ -91,8 +142,12 @@ class TextExtractionEvaluator:
 
     def extract_key_phrases(self, text: str) -> List[str]:
         """Extract key phrases from text using spaCy."""
-        doc = self.nlp(text)
-        return [chunk.text for chunk in doc.noun_chunks]
+        try:
+            doc = self.nlp(text)
+            return [chunk.text for chunk in doc.noun_chunks]
+        except Exception as e:
+            self.logger.error(f"Error extracting key phrases: {e}")
+            return []
 
     def analyze_missing_content(self, missing_content: List[str], missing_phrases: List[str]) -> Dict:
         """Enhanced analysis of missing content with detailed assessment."""
@@ -193,12 +248,15 @@ class TextExtractionEvaluator:
         base_path = Path(self.config['output']['file']).stem
         
         for format_type in self.config['output']['formats']:
-            if format_type == 'excel':
-                results_df.to_excel(f"{base_path}.xlsx", index=False)
-            elif format_type == 'csv':
-                results_df.to_csv(f"{base_path}.csv", index=False)
-            elif format_type == 'json':
-                results_df.to_json(f"{base_path}.json", orient='records', indent=2)
+            try:
+                if format_type == 'excel':
+                    results_df.to_excel(f"{base_path}.xlsx", index=False)
+                elif format_type == 'csv':
+                    results_df.to_csv(f"{base_path}.csv", index=False)
+                elif format_type == 'json':
+                    results_df.to_json(f"{base_path}.json", orient='records', indent=2)
+            except Exception as e:
+                self.logger.error(f"Error exporting results to {format_type}: {e}")
 
     def run_evaluation(self):
         """Run the complete evaluation process."""
@@ -206,7 +264,10 @@ class TextExtractionEvaluator:
             self.logger.info("Starting text extraction evaluation")
             
             # Read input file
-            df = pd.read_excel(self.config['input']['file'])
+            try:
+                df = pd.read_excel(self.config['input']['file'])
+            except Exception as e:
+                raise RuntimeError(f"Error reading input file: {e}")
             
             # Validate required columns
             missing_columns = set(self.config['input']['required_columns']) - set(df.columns)
@@ -254,6 +315,9 @@ class TextExtractionEvaluator:
                 except Exception as e:
                     self.logger.error(f"Error processing article {index + 1}: {e}")
                     continue
+            
+            if not results:
+                raise RuntimeError("No articles were successfully processed")
             
             # Create results DataFrame
             results_df = pd.DataFrame(results)
