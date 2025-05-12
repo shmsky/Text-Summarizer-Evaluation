@@ -1,0 +1,24 @@
+input:
+  file: "Test_check.xlsx"
+  required_columns:
+    - URL
+    - lib_text
+
+output:
+  file: "evaluation_results.xlsx"
+  formats:
+    - excel
+    - csv
+    - json
+
+analysis:
+  similarity_threshold: 0.95
+  sentence_delimiters: "[.!?]+"
+  missing_content_thresholds:
+    minor: 50
+    moderate: 200
+    significant: 200
+
+logging:
+  level: "INFO"
+  file: "evaluation.log" 
